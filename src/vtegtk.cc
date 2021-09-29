@@ -276,6 +276,28 @@ catch (...)
         vte::log_exception();
 }
 
+static gboolean
+vte_terminal_real_termprops_changed(VteTerminal *terminal,
+                                    GQuark const* keys,
+                                    int n_keys) noexcept
+try
+{
+        for (auto i = 0; i < n_keys; ++i) {
+                g_signal_emit(terminal,
+                              signals[SIGNAL_TERMPROP_CHANGED],
+                              keys[i], /* detail */
+                              g_quark_to_string(keys[i]));
+
+        }
+
+        return false;
+}
+catch (...)
+{
+        vte::log_exception();
+        return false;
+}
+
 #if VTE_GTK == 3
 
 static void
@@ -1169,6 +1191,13 @@ catch (...)
 }
 
 static void
+_vte_terminal_class_install_termprop(VteTerminalClass* klass,
+                                     char const* name,
+                                     VtePropertyType type) noexcept
+{
+}
+
+static void
 vte_terminal_class_init(VteTerminalClass *klass)
 {
 #ifdef VTE_DEBUG
@@ -1289,6 +1318,9 @@ vte_terminal_class_init(VteTerminalClass *klass)
 	klass->paste_clipboard = vte_terminal_real_paste_clipboard;
 
         klass->bell = NULL;
+
+        klass->termprops_changed = vte_terminal_real_termprops_changed;
+        klass->termprop_changed = nullptr;
 
         /* GtkScrollable interface properties */
         g_object_class_override_property (gobject_class, PROP_HADJUSTMENT, "hadjustment");
@@ -1909,6 +1941,72 @@ vte_terminal_class_init(VteTerminalClass *klass)
                                    g_cclosure_marshal_VOID__VOIDv);
 
         /**
+         * VteTerminal::termprop-changed:
+         * @vteterminal: the object which received the signal
+         * @name: the name of the changed property
+         *
+         * The "termprop-changed" signal is emitted when a termprop
+         * has changed or been reset. The handler may use one of the
+         * vte_terminal_get_termprop_*() functions to retrieve the
+         * new value, but must not call any other API on @terminal.
+         *
+         * This signal supports detailed connections, so e.g. subscribing
+         * to "termprop-changed::name" only runs the callback when the
+         * termprop "name" has changed.
+         *
+         * Since: 0.68
+         */
+        signals[SIGNAL_TERMPROP_CHANGED] =
+                g_signal_new(I_("termprop-changed"),
+                             G_OBJECT_CLASS_TYPE(klass),
+                             GSignalFlags(G_SIGNAL_RUN_LAST |
+                                          G_SIGNAL_DETAILED),
+                             G_STRUCT_OFFSET(VteTerminalClass, termprop_changed),
+                             nullptr,
+                             nullptr,
+                             g_cclosure_marshal_VOID__STRING,
+                             G_TYPE_NONE,
+                             1,
+                             G_TYPE_STRING | G_SIGNAL_TYPE_STATIC_SCOPE);
+        g_signal_set_va_marshaller(signals[SIGNAL_TERMPROP_CHANGED],
+                                   G_OBJECT_CLASS_TYPE(klass),
+                                   g_cclosure_marshal_VOID__STRINGv);
+
+        /**
+         * VteTerminal::termprops-changed:
+         * @vteterminal: the object which received the signal
+         * @keys: (array length=n_keys) (element-type GQuark): an array of #GQuark
+         * @n_keys: the length of the @keys array
+         *
+         * Emitted when termprops have changed. @keys is an array containing
+         * #GQuark of the names of the changed properties.
+         *
+         * The default handler for this signal emits the "termprop-changed"
+         * signal for each changed property. Returning %TRUE from a handler
+         * running before the default will prevent this.
+         *
+         * Returns: %TRUE to stop further handlers being invoked for this signal,
+         *   or %FALSE to continue signal emission
+         *
+         * Since: 0.68
+         */
+        signals[SIGNAL_TERMPROPS_CHANGED] =
+                g_signal_new(I_("termprops-changed"),
+                             G_OBJECT_CLASS_TYPE(klass),
+                             G_SIGNAL_RUN_LAST,
+                             G_STRUCT_OFFSET(VteTerminalClass, termprops_changed),
+                             g_signal_accumulator_true_handled,
+                             nullptr,
+                             _vte_marshal_BOOLEAN__POINTER_INT,
+                             G_TYPE_BOOLEAN,
+                             2,
+                             G_TYPE_POINTER,
+                             G_TYPE_INT);
+        g_signal_set_va_marshaller(signals[SIGNAL_TERMPROPS_CHANGED],
+                                   G_OBJECT_CLASS_TYPE(klass),
+                                   _vte_marshal_BOOLEAN__POINTER_INTv);
+
+        /**
          * VteTerminal::bell:
          * @vteterminal: the object which received the signal
          *
@@ -2424,9 +2522,104 @@ vte_terminal_class_init(VteTerminalClass *klass)
         gtk_widget_class_set_accessible_type(widget_class, VTE_TYPE_TERMINAL_ACCESSIBLE);
 #endif
 #endif
+
+        /* Install termprops */
 }
 
 /* public API */
+
+/**
+ * vte_terminal_class_install_termprop:
+ * @klass: the #VteTerminalClass
+ * @name: a namespaced property name
+ * @type: a type to use for the property
+ *
+ * Installs a new terminal property that can be set by the application.
+ *
+ * Note that @name must contain consist of at least 4 components separated by
+ * a dot ('.'), and each component must only contain the characters [a-z0-9-]
+ * and start with a character from [a-z], and start with "vte.ext.". You should
+ * use an identifier for your terminal as the first component after the prefix
+ * as a namespace marker.
+ *
+ * To set such a property, use the "OSC 777 ; set ( ; <prop> ( =<value> )? )* ST"
+ * sequence containing zero or more "<prop> (= <value>)" assignments delimited
+ * by semicolons (';').
+ * Omitting the "= <value>" part resets the property to its default value.
+ *
+ * The supported values for each type are as follows:
+ *
+ * * A property of type %VTE_PROPERTY_VALUELESS has no value.
+ *   This type of property can be used for signalling.
+ *
+ * * A property of type %VTE_PROPERTY_BOOL is a boolean property, and
+ *   takes the <value> "0" for %FALSE and and "1" for %TRUE.
+ *   The default value is %FALSE.
+ *
+ * * A property of type %VTE_PROPERTY_UINT16 is an uint16_t, and takes
+ *   a string of digits that when converted to a number must be between
+ *   0 and 65535.
+ *   The default value is -1.
+ *
+ * * A property of type %VTE_PROPERTY_COLOR is a color, and takes a string
+ *   in the format "#xxxxxx" where x is any hexadecimal digit [0-9a-fA-F].
+ *   The default value is "#000000".
+ *
+ * * A property of type %VTE_PROPERTY_STRING is a string.
+ *   Note that due to the OSC syntax, that string must not contain semicolons (';').
+ *   There is no standard way to escape a semicolon, either. The maximum size
+ *   of the value is 1024 codepoints.
+ *   The default value is %NULL.
+ *
+ * * A property of type %VTE_PROPERTY_DATA is binary data, and takes
+ *   a string that is base64-encoded in the default alphabet. The maximum size
+ *   of the data (after base64 decoding) is 2048 bytes.
+ *   The default value is %NULL.
+ *
+ * Setting a property to a <value> that does not conform to these requirements
+ * resets the value to its default value.
+ *
+ * Note also the limit on the total length of the OSC control string of 4096
+ * unicode codepoints between the OSC and the ST (excluding both).
+ *
+ * On reset, all termprops are reset to their default values.
+ *
+ * The #VteTerminal:termprop-changed signal will be emitted with
+ * the names of the changed properties.
+ *
+ * It is a programming error to call this function after any #VteTerminal
+ * instances have already been created.
+ *
+ * Since: 0.68
+ */
+void
+vte_terminal_class_install_termprop(VteTerminalClass *klass,
+                                    char const* name,
+                                    VtePropertyType type) noexcept
+{
+}
+
+/**
+ * vte_terminal_class_get_termprop_type:
+ * @klass: the #VteTerminalClass
+ * @name: a namespaced property name
+ *
+ * Gets the property type of the termprop. Note that in contrast to
+ * vte_terminal_class_install_termprop(), @name must contain the full
+ * name. For properties installed via vte_terminal_class_install_termprop(),
+ * the name starts with "vte.ext.".
+ *
+ * Returns: the #VtePropertyType of the named termprop, or %VTE_PROPERTY_INVALID
+ *   if there is no termprop of that name.
+ *
+ * Since: 0.68
+ */
+VtePropertyType
+vte_terminal_class_get_termprop_type(VteTerminalClass *klass,
+                                     char const* name) noexcept
+{
+        return VTE_PROPERTY_INVALID;
+}
 
 /**
  * vte_get_features:
@@ -6296,6 +6489,185 @@ catch (...)
 {
         vte::log_exception();
         return VTE_ALIGN_START_FILL;
+}
+
+/**
+ * vte_terminal_get_termprop_bool:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ *
+ * Returns the value of a %VTE_PROPERTY_BOOL termprop, or %FALSE if
+ *   @prop is not a registered property.
+ *
+ * Returns: the property's value
+ *
+ * Since: 0.68
+ */
+gboolean
+vte_terminal_get_termprop_bool(VteTerminal* terminal,
+                               char const* prop) noexcept
+{
+        return false;
+}
+
+/**
+ * vte_terminal_get_termprop_int:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ *
+ * Returns the value of a %VTE_PROPERTY_UINT16 termprop, or -1 if
+ *   @prop is unset, or @prop is not a registered property.
+ *
+ * Returns: the property's value, or -1
+ *
+ * Since: 0.68
+ */
+int
+vte_terminal_get_termprop_int(VteTerminal* terminal,
+                              char const* prop) noexcept
+{
+        return -1;
+}
+
+/**
+ * vte_terminal_get_termprop_color:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ * @color: (out): a #GdkRGBA to fill in
+ *
+ * Stores the value of a %VTE_PROPERTY_COLOR termprop in @color and
+ * returns %TRUE if the termprop is set, or stores rgba(0,0,0,0) in @color
+ * and returns %FALSE if the termprop is unset.
+ *
+ * Returns: %TRUE iff the termprop is set
+ *
+ * Since: 0.68
+ */
+gboolean
+vte_terminal_get_termprop_color(VteTerminal* terminal,
+                                char const* prop,
+                                GdkRGBA* color) noexcept
+{
+        *color = GdkRGBA{0., 0., 0., 0.};
+        return false;
+}
+
+/**
+ * vte_terminal_get_termprop_string:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ *
+ * Returns the value of a %VTE_PROPERTY_STRING termprop, or %NULL if
+ *   @prop is unset, or @prop is not a registered property.
+ *
+ * Returns: (transfer none) (nullable): the property's value, or %NULL
+ *
+ * Since: 0.68
+ */
+char const*
+vte_terminal_get_termprop_string(VteTerminal* terminal,
+                                 char const* prop) noexcept
+{
+        return nullptr;
+}
+
+/**
+ * vte_terminal_get_termprop_data:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ * @size: (out): size of the data
+ *
+ * Returns the value of a %VTE_PROPERTY_DATA termprop, or %NULL if
+ *   @prop is unset, or @prop is not a registered property.
+ *
+ * Returns: (transfer none) (element-type guint8) (array length=size): the property's value, or %NULL
+ *
+ * Since: 0.68
+ */
+guint8 const*
+vte_terminal_get_termprop_data(VteTerminal* terminal,
+                               char const* prop,
+                               size_t* size) noexcept
+{
+        *size = 0;
+        return nullptr;
+
+}
+
+/**
+ * vte_terminal_get_termprop_data_bytes:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ * @size: (out): size of the data
+ *
+ * Returns the value of a %VTE_PROPERTY_DATA termprop as a #GBytes, or %NULL if
+ *   @prop is unset, or @prop is not a registered property.
+ *
+ * Returns: (transfer full): the property's value as a #GBytes, or %NULL
+ *
+ * Since: 0.68
+ */
+GBytes*
+vte_terminal_get_termprop_data_bytes(VteTerminal* terminal,
+                                     char const* prop) noexcept
+{
+        return nullptr;
+}
+
+/**
+ * vte_terminal_get_termprop_value:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ * @gvalue: (out): a #GValue to be filled in
+ *
+ * Returns %TRUE with the value of @prop stored in @value, or %FALSE if
+ *   @prop is not a registered property and @value unset.
+ *
+ * Returns: whether the property exists
+ *
+ * Since: 0.68
+ */
+gboolean
+vte_terminal_get_termprop_value(VteTerminal* terminal,
+                                char const* prop,
+                                GValue* gvalue) noexcept
+{
+        return false;
+}
+
+/**
+ * vte_terminal_get_termprop_variant:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ *
+ * Returns the value of @prop as a #GVariant, or %NULL if
+ *   @prop is not a registered property @prop.
+ *
+ *
+ * Returns: (transfer full): a floating #GVariant, or %NULL
+ *
+ * Since: 0.68
+ */
+GVariant*
+vte_terminal_get_termprop_variant(VteTerminal* terminal,
+                                  char const* prop) noexcept
+{
+        return nullptr;
+}
+
+/**
+ * vte_terminal_reset_termprop:
+ * @terminal: a #VteTerminal
+ * @prop: a termprop name
+ *
+ * Resets the termprop @prop to its default value.
+ *
+ * Since: 0.68
+ */
+void
+vte_terminal_reset_termprop(VteTerminal* terminal,
+                            char const* prop) noexcept
+{
 }
 
 namespace vte {

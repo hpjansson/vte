@@ -115,11 +115,17 @@ struct _VteTerminalClass {
         gpointer _extra_padding[3];
 #endif /* _VTE_GTK == 3 */
 
+        gboolean (* termprops_changed)(VteTerminal* terminal,
+                                       GQuark const* props,
+                                       int n_props);
+        void (* termprop_changed)(VteTerminal* terminal,
+                                  char const* prop);
+
         /* Add new vfuncs here, and subtract from the padding below. */
 
         /* Padding for future expansion. */
 #if _VTE_GTK == 3
-        gpointer _padding[13];
+        gpointer _padding[11];
 #elif _VTE_GTK == 4
         gpointer _padding[16];
 #endif /* _VTE_GTK */
@@ -127,6 +133,15 @@ struct _VteTerminalClass {
 // FIXMEgtk4 use class private data instead
         VteTerminalClassPrivate *priv;
 };
+
+_VTE_PUBLIC
+void vte_terminal_class_install_termprop(VteTerminalClass *klass,
+                                         char const* name,
+                                         VtePropertyType type) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2);
+
+_VTE_PUBLIC
+VtePropertyType vte_terminal_class_get_termprop_type(VteTerminalClass *klass,
+                                                     char const* name) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2);
 
 /* The structure we return as the supplemental attributes for strings. */
 struct _VteCharAttributes {
@@ -570,6 +585,45 @@ void vte_terminal_set_yalign(VteTerminal* terminal,
 
 _VTE_PUBLIC
 VteAlign vte_terminal_get_yalign(VteTerminal* terminal) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1);
+
+_VTE_PUBLIC
+gboolean vte_terminal_get_termprop_bool(VteTerminal* terminal,
+                                        char const* prop) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2);
+
+_VTE_PUBLIC
+int vte_terminal_get_termprop_int(VteTerminal* terminal,
+                                  char const* prop) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2);
+
+_VTE_PUBLIC
+gboolean vte_terminal_get_termprop_color(VteTerminal* terminal,
+                                         char const* prop,
+                                         GdkRGBA* color) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2, 3);
+
+_VTE_PUBLIC
+char const* vte_terminal_get_termprop_string(VteTerminal* terminal,
+                                             char const* prop) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2);
+
+_VTE_PUBLIC
+guint8 const* vte_terminal_get_termprop_data(VteTerminal* terminal,
+                                             char const* prop,
+                                             size_t* size) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2, 3);
+
+_VTE_PUBLIC
+GBytes* vte_terminal_get_termprop_data_bytes(VteTerminal* terminal,
+                                             char const* prop) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2);
+
+_VTE_PUBLIC
+gboolean vte_terminal_get_termprop_value(VteTerminal* terminal,
+                                         char const* prop,
+                                         GValue* gvalue) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2, 3);
+
+_VTE_PUBLIC
+GVariant* vte_terminal_get_termprop_variant(VteTerminal* terminal,
+                                            char const* prop) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2);
+
+_VTE_PUBLIC
+void vte_terminal_reset_termprop(VteTerminal* terminal,
+                                 char const* prop) _VTE_CXX_NOEXCEPT _VTE_GNUC_NONNULL(1, 2);
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(VteTerminal, g_object_unref)
 

@@ -220,4 +220,27 @@ typedef enum {
         /* VTE_ALIGN_END_FILL    = 6U, */
 } VteAlign;
 
+/**
+ * VtePropertyType:
+ * @VTE_PROPERTY_VALUELESS: no value, use for signalling
+ * @VTE_PROPERTY_BOOL: a bool, %FALSE if default
+ * @VTE_PROPERTY_UINT16: an integer, or -1 if default
+ * @VTE_PROPERTY_COLOR: a color, or %NULL if default
+ * @VTE_PROPERTY_STRING: a string, or %NULL if default
+ * @VTE_PROPERTY_DATA: binary data, or %NULL if default
+ *
+ * An enumeration type describing types of properties.
+ *
+ * Since: 0.68
+ */
+typedef enum {
+        VTE_PROPERTY_INVALID = -1, /*< skip >*/
+        VTE_PROPERTY_VALUELESS = 0,
+        VTE_PROPERTY_BOOL,
+        VTE_PROPERTY_UINT16,
+        VTE_PROPERTY_COLOR,
+        VTE_PROPERTY_STRING,
+        VTE_PROPERTY_DATA,
+} VtePropertyType;
+
 G_END_DECLS

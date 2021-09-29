@@ -10,6 +10,8 @@ VteTextBlinkMode
 VteFormat
 VteWriteFlags
 VteSelectionFunc
+vte_terminal_class_install_termprop
+vte_terminal_class_get_termprop_type
 vte_terminal_new
 vte_terminal_feed
 vte_terminal_feed_child
@@ -108,6 +110,15 @@ vte_terminal_get_xalign
 vte_terminal_set_xalign
 vte_terminal_get_yalign
 vte_terminal_set_yalign
+vte_terminal_get_termprop_bool
+vte_terminal_get_termprop_color
+vte_terminal_get_termprop_int
+vte_terminal_get_termprop_string
+vte_terminal_get_termprop_data
+vte_terminal_get_termprop_data_bytes
+vte_terminal_get_termprop_value
+vte_terminal_get_termprop_variant
+vte_terminal_reset_termprop
 
 <SUBSECTION>
 VteFeatureFlags
