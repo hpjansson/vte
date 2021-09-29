@@ -627,4 +627,13 @@ void vte_terminal_reset_termprop(VteTerminal* terminal,
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC(VteTerminal, g_object_unref)
 
+/* BEGIN distribution patches */
+
+#define VTE_TERMPROP_FEDORA_CONTAINER_NAME    "fedora.container.name"    /* string */
+#define VTE_TERMPROP_FEDORA_CONTAINER_RUNTIME "fedora.container.runtime" /* string */
+#define VTE_TERMPROP_FEDORA_SHELL_PREEXEC     "fedora.shell.preexec"     /* valueless */
+#define VTE_TERMPROP_FEDORA_SHELL_PRECMD      "fedora.shell.precmd"      /* valueless */
+
+/* END distribution patches */
+
 G_END_DECLS
